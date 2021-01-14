@@ -436,8 +436,8 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o2p[c[1], c[2], c[3]] && !addedTo[allC[1,2], allC[1, 2], allC[1, 3]]
-          lo = allC[1, :]
+        if o2p[c[1], c[2], c[3]] && !addedTo[allC[3,2], allC[3, 2], allC[3, 3]]
+          lo = allC[3, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
           snsn = scalar1 * scalar2
@@ -458,8 +458,8 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o2m[c[1], c[2], c[3]] && !addedTo[allC[2,2], allC[2, 2], allC[2, 3]]
-          lo = allC[2, :]
+        if o2m[c[1], c[2], c[3]] && !addedTo[allC[4,2], allC[4, 2], allC[4, 3]]
+          lo = allC[4, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
           snsn = scalar1 * scalar2
@@ -480,8 +480,8 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o3p[c[1], c[2], c[3]] && !addedTo[allC[1,2], allC[1, 2], allC[1, 3]]
-          lo = allC[1, :]
+        if o3p[c[1], c[2], c[3]] && !addedTo[allC[5,2], allC[5, 2], allC[5, 3]]
+          lo = allC[5, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
           snsn = scalar1 * scalar2
@@ -502,8 +502,8 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o3m[c[1], c[2], c[3]] && !addedTo[allC[2,2], allC[2, 2], allC[2, 3]]
-          lo = allC[2, :]
+        if o3m[c[1], c[2], c[3]] && !addedTo[allC[6,2], allC[6, 2], allC[6, 3]]
+          lo = allC[6, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
           snsn = scalar1 * scalar2
