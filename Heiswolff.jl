@@ -1,4 +1,4 @@
-using Random, BenchmarkTools
+using Random, Printf, BenchmarkTools
 
 # Define main function
 function Heiswolff()
@@ -80,7 +80,9 @@ function Heiswolff()
           metro_sweep_faster_Combined_allGPU!(
             sBlock, L, Lt, beta, occu, j1p, j1m, j2p, j2m, j3p, j3m, checkerboard, checkerboardOther, NEQ)
 
-          # MISSING: call to wolff_sweep_notGPU
+          for is = 1:1
+            wolff_sweep_notGPU!(sBlock, L, Lt, beta, occu, j1p, j1m, j2p, j2m, j3p, j3m, NCLUSTER0)
+          end
 
           totalflip = 0f0
 
@@ -333,6 +335,216 @@ function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, 
 
   # Return
   nothing
+end
+
+function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int, 
+  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3}, 
+  j2p::Array{Float32, 3}, j2m::Array{Float32, 3}, j3p::Array{Float32, 3}, j3m::Array{Float32, 3}, NCLUSTER::Int)::Nothing
+
+  o1p, o1m, o2p, o2m, o3p, o3m = updateNeighborSpins(occu)
+
+  c1p = collect(1:L) .+ 1
+  c1p[end] = 1
+  c1m = collect(1:L) .- 1
+  c1m[1] = L
+
+  c2p = c1p
+  c2m = c1m
+
+  c3p = collect(1:Lt) .+ 1
+  c3p[end] = 1
+  c3m = collect(1:Lt) .- 1
+  c3m[1] = Lt
+
+  stack = zeros(Int, L^2 * Lt, 3)
+
+  nflip = 0
+  icluster = 0
+
+  while icluster < NCLUSTER
+    addedTo = zeros(Bool, L, L, Lt)
+    is = cat(rand(1:L, 2), rand(1:Lt, 1), dims=1)
+
+    if occu[is[1], is[2], is[3]]
+      addedTo[is[1], is[2], is[3]] = 1
+      icluster += 1
+
+      sp = 1
+      stack[sp, :] .= is
+
+      oldSpins = [sBlock[is[1], is[2], is[3], 1], sBlock[is[1], is[2], is[3], 2], sBlock[is[1], is[2], is[3], 3]]
+      nSpins = getRSphere_WholeArray(1, 1)
+
+      isize = 1
+      scalar2 = sum(nSpins .* oldSpins)
+
+      sBlock[is[1], is[2], is[3], :] .= oldSpins .- 2f0 * scalar2 .* nSpins[:]
+      helpS = rand(Float64, 6)
+
+      while sp > 0
+        c = stack[sp, :]
+        cS = [sBlock[c[1], c[2], c[3], 1], sBlock[c[1], c[2], c[3], 2], sBlock[c[1], c[2], c[3], 3]]
+        scalar1 = -sum(nSpins .* cS)
+
+        sp -= 1
+        c1 = c[1]
+        c2 = c[2]
+        c3 = c[3]
+        allC = [c1p[c1] c2 c3;c1m[c1] c2 c3;c1 c2p[c2] c3;c1 c2m[c2] c3;c1 c2 c3p[c3];c1 c2 c3m[c3]]
+
+        if o1p[c[1], c[2], c[3]] && !addedTo[allC[1,2], allC[1, 2], allC[1, 3]]
+          lo = allC[1, :]
+          cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
+          scalar2 = sum(nSpins .* cS)
+          snsn = scalar1 * scalar2
+
+          if snsn > 0
+            padd = 1f0 - exp(-2f0*j1p[c[1], c[2], c[3]]*beta*snsn)
+            help = helpS[1]
+            if help < padd
+              ### NEED TO ACTUALLY UPDATE THE SPIN
+              sBlock[lo[1], lo[2], lo[3], :] .= cS .- 2f0*scalar2.*nSpins[:]
+              addedTo[lo[1], lo[2], lo[3]] = true
+
+              sp += 1
+              stack[sp, :] .= lo
+
+              isize += 1
+            end
+          end
+        end
+
+        if o1m[c[1], c[2], c[3]] && !addedTo[allC[2,2], allC[2, 2], allC[2, 3]]
+          lo = allC[2, :]
+          cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
+          scalar2 = sum(nSpins .* cS)
+          snsn = scalar1 * scalar2
+
+          if snsn > 0
+            padd = 1f0 - exp(-2f0*j1m[c[1], c[2], c[3]]*beta*snsn)
+            help = helpS[2]
+            if help < padd
+              ### NEED TO ACTUALLY UPDATE THE SPIN
+              sBlock[lo[1], lo[2], lo[3], :] .= cS .- 2f0*scalar2.*nSpins[:]
+              addedTo[lo[1], lo[2], lo[3]] = true
+
+              sp += 1
+              stack[sp, :] .= lo
+
+              isize += 1
+            end
+          end
+        end
+
+        if o2p[c[1], c[2], c[3]] && !addedTo[allC[1,2], allC[1, 2], allC[1, 3]]
+          lo = allC[1, :]
+          cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
+          scalar2 = sum(nSpins .* cS)
+          snsn = scalar1 * scalar2
+
+          if snsn > 0
+            padd = 1f0 - exp(-2f0*j2p[c[1], c[2], c[3]]*beta*snsn)
+            help = helpS[3]
+            if help < padd
+              ### NEED TO ACTUALLY UPDATE THE SPIN
+              sBlock[lo[1], lo[2], lo[3], :] .= cS .- 2f0*scalar2.*nSpins[:]
+              addedTo[lo[1], lo[2], lo[3]] = true
+
+              sp += 1
+              stack[sp, :] .= lo
+
+              isize += 1
+            end
+          end
+        end
+
+        if o2m[c[1], c[2], c[3]] && !addedTo[allC[2,2], allC[2, 2], allC[2, 3]]
+          lo = allC[2, :]
+          cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
+          scalar2 = sum(nSpins .* cS)
+          snsn = scalar1 * scalar2
+
+          if snsn > 0
+            padd = 1f0 - exp(-2f0*j2m[c[1], c[2], c[3]]*beta*snsn)
+            help = helpS[4]
+            if help < padd
+              ### NEED TO ACTUALLY UPDATE THE SPIN
+              sBlock[lo[1], lo[2], lo[3], :] .= cS .- 2f0*scalar2.*nSpins[:]
+              addedTo[lo[1], lo[2], lo[3]] = true
+
+              sp += 1
+              stack[sp, :] .= lo
+
+              isize += 1
+            end
+          end
+        end
+
+        if o3p[c[1], c[2], c[3]] && !addedTo[allC[1,2], allC[1, 2], allC[1, 3]]
+          lo = allC[1, :]
+          cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
+          scalar2 = sum(nSpins .* cS)
+          snsn = scalar1 * scalar2
+
+          if snsn > 0
+            padd = 1f0 - exp(-2f0*j3p[c[1], c[2], c[3]]*beta*snsn)
+            help = helpS[5]
+            if help < padd
+              ### NEED TO ACTUALLY UPDATE THE SPIN
+              sBlock[lo[1], lo[2], lo[3], :] .= cS .- 2f0*scalar2.*nSpins[:]
+              addedTo[lo[1], lo[2], lo[3]] = true
+
+              sp += 1
+              stack[sp, :] .= lo
+
+              isize += 1
+            end
+          end
+        end
+
+        if o3m[c[1], c[2], c[3]] && !addedTo[allC[2,2], allC[2, 2], allC[2, 3]]
+          lo = allC[2, :]
+          cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
+          scalar2 = sum(nSpins .* cS)
+          snsn = scalar1 * scalar2
+
+          if snsn > 0
+            padd = 1f0 - exp(-2f0*j3m[c[1], c[2], c[3]]*beta*snsn)
+            help = helpS[6]
+            if help < padd
+              ### NEED TO ACTUALLY UPDATE THE SPIN
+              sBlock[lo[1], lo[2], lo[3], :] .= cS .- 2f0*scalar2.*nSpins[:]
+              addedTo[lo[1], lo[2], lo[3]] = true
+
+              sp += 1
+              stack[sp, :] .= lo
+
+              isize += 1
+            end
+          end
+        end
+
+      end
+
+      nflip += isize
+    end
+  end
+
+  println(@sprintf("Temperature = %.4f, cluster size = %.3f", 1f0 / beta, Float32(nflip) / Float32(NCLUSTER*    L^2*Lt)))
+
+  # Return
+  nothing
+end
+
+function updateNeighborSpins(s::Array{Bool, 3})::Tuple{Array{Bool, 3}, Array{Bool, 3}, Array{Bool, 3}, Array{Bool, 3}, Array{Bool, 3}, Array{Bool, 3}}
+  # Return
+  ( circshift(s, (-1, 0, 0)),
+    circshift(s, (1, 0, 0)),
+    circshift(s, (0, -1, 0)),
+    circshift(s, (0, 1, 0)),
+    circshift(s, (0, 0, -1)),
+    circshift(s, (0, 0, 1))
+  )
 end
 
 function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt::Int, 
