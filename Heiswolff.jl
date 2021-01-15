@@ -1,4 +1,4 @@
-using Random, Printf, BenchmarkTools
+using Random, Statistics, Printf, BenchmarkTools
 
 # Define main function
 function Heiswolff()
@@ -10,16 +10,16 @@ function Heiswolff()
   LMax = 10
   Lsz = 1
 
-  LtMin = 20
+  LtMin = 15
   LtMax = 20
   Ltsz = 20
 
-  NCONF = 1
+  NCONF = 20
   NEQ = 250
   NMESS = 200 # Monte Carlo sweeps
-  TMIN = 1.4f0
-  TMAX = 1.6f0
-  DT = -0.05f0 # Temperature control
+  TMIN = 1f0
+  TMAX = 2f0
+  DT = -0.2f0 # Temperature control
   NTEMP = Int(ceil(1+(TMIN-TMAX) / DT))
 
   impconc = 0f0 # 0.407253 # Impurities as decimal
@@ -80,9 +80,9 @@ function Heiswolff()
           metro_sweep_faster_Combined_allGPU!(
             sBlock, L, Lt, beta, occu, j1p, j1m, j2p, j2m, j3p, j3m, checkerboard, checkerboardOther, NEQ)
 
-          for is = 1:1
-            wolff_sweep_notGPU!(sBlock, L, Lt, beta, occu, j1p, j1m, j2p, j2m, j3p, j3m, NCLUSTER0)
-          end
+          # for is = 1:1
+          #   wolff_sweep_notGPU!(sBlock, L, Lt, beta, occu, j1p, j1m, j2p, j2m, j3p, j3m, NCLUSTER0)
+          # end
 
           totalflip = 0f0
 
@@ -159,6 +159,16 @@ function Heiswolff()
       cell[L, Lt] = deepcopy(conf)
     end
   end
+
+  temp = cell[LMin, LtMin].temperature[:, NCONF]
+  binder = mean(1f0 .- cell[LMin, LtMin].mag4[:,1:NCONF] ./ (3f0.*cell[LMin, LtMin].mag2[:,1:NCONF].^2), dims=2);
+  # err = std(1f0 .- cell[LMIN, LTMIN].mag4[:,1:NCONF] ./ (3f0.*cell[LMIN, LTMIN].mag2[:,1:NCONF].^2),0,2) ./ sqrt(NCONF);
+
+  println(temp)
+  println()
+  println(binder)
+
+  cell
 end
 
 # Define helper functions
@@ -392,7 +402,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
         c3 = c[3]
         allC = [c1p[c1] c2 c3;c1m[c1] c2 c3;c1 c2p[c2] c3;c1 c2m[c2] c3;c1 c2 c3p[c3];c1 c2 c3m[c3]]
 
-        if o1p[c[1], c[2], c[3]] && !addedTo[allC[1,2], allC[1, 2], allC[1, 3]]
+        if o1p[c[1], c[2], c[3]] && !addedTo[allC[1,1], allC[1, 2], allC[1, 3]]
           lo = allC[1, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
@@ -414,7 +424,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o1m[c[1], c[2], c[3]] && !addedTo[allC[2,2], allC[2, 2], allC[2, 3]]
+        if o1m[c[1], c[2], c[3]] && !addedTo[allC[2,1], allC[2, 2], allC[2, 3]]
           lo = allC[2, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
@@ -436,7 +446,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o2p[c[1], c[2], c[3]] && !addedTo[allC[3,2], allC[3, 2], allC[3, 3]]
+        if o2p[c[1], c[2], c[3]] && !addedTo[allC[3,1], allC[3, 2], allC[3, 3]]
           lo = allC[3, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
@@ -458,7 +468,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o2m[c[1], c[2], c[3]] && !addedTo[allC[4,2], allC[4, 2], allC[4, 3]]
+        if o2m[c[1], c[2], c[3]] && !addedTo[allC[4,1], allC[4, 2], allC[4, 3]]
           lo = allC[4, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
@@ -480,7 +490,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o3p[c[1], c[2], c[3]] && !addedTo[allC[5,2], allC[5, 2], allC[5, 3]]
+        if o3p[c[1], c[2], c[3]] && !addedTo[allC[5,1], allC[5, 2], allC[5, 3]]
           lo = allC[5, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
@@ -502,7 +512,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
           end
         end
 
-        if o3m[c[1], c[2], c[3]] && !addedTo[allC[6,2], allC[6, 2], allC[6, 3]]
+        if o3m[c[1], c[2], c[3]] && !addedTo[allC[6,1], allC[6, 2], allC[6, 3]]
           lo = allC[6, :]
           cS = [sBlock[lo[1], lo[2], lo[3], 1], sBlock[lo[1], lo[2], lo[3], 2], sBlock[lo[1], lo[2], lo[3], 3]]
           scalar2 = sum(nSpins .* cS)
@@ -530,7 +540,7 @@ function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
     end
   end
 
-  println(@sprintf("Temperature = %.4f, cluster size = %.3f", 1f0 / beta, Float32(nflip) / Float32(NCLUSTER*    L^2*Lt)))
+  println(@sprintf("Temperature = %.4f, cluster size = %.3f", 1f0 / beta, Float32(nflip) / Float32(NCLUSTER*L^2*Lt)))
 
   # Return
   nothing
@@ -626,6 +636,16 @@ function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt:
     # Other checkerboard
     nSpins = nSpinsTest[:, :, :, :, j]
     ds = sBlock .- nSpins
+
+    s1p = sBlock[p1, :, :, :]
+    s1m = sBlock[m1, :, :, :]
+    s2p = sBlock[:, p1, :, :]
+    s2m = sBlock[:, m1, :, :]
+    s3p = sBlock[:, :, tp1, :]
+    s3m = sBlock[:, :, tm1, :]
+
+    netxyz = j1pr.*s1p .+ j2pr.*s2p .+ j3pr.*s3p
+
     dE = sum(netxyz .* ds, dims=4)
 
     swap = ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboardOther
@@ -694,4 +714,4 @@ Conf(N::Int, M::Int) = Conf(
   zeros(Float32, N, M)
 )
 
-@btime Heiswolff()
+out = Heiswolff()
