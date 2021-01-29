@@ -3,25 +3,26 @@ function matHeiswolff1_GPU_Functions_Bloced()
 tic
 %#ok<*NASGU>
 clear
+clear samRand
 rng(314,'simdTwister')
 
 
-LMin =10;
-LMax = 10;
+LMin =5;
+LMax = 5;
 Lsz = 1;
 
 
 
-LtMin = 20;
-LtMax = 20;
-Ltsz = 20;
+LtMin = 10;
+LtMax = 15;
+Ltsz = 10;
 
 NCONF  = 1;
-NEQ    = 250;
-NMESS  = 200;     % Monte Carlo sweeps
-TMIN   = 1.4;
-TMAX   = 1.6;
-DT     = -0.05;      % temperature control
+NEQ    = 50;
+NMESS  = 50;     % Monte Carlo sweeps
+TMIN   = 1.0;
+TMAX   = 2.0;
+DT     = -0.2;      % temperature control
 NTEMP  = ceil(1+(TMIN-TMAX)/DT);
 
 impconc = 0.0;%.407253;                          %% impurities as decimal
@@ -190,9 +191,9 @@ for L = LMin:Lsz:LMax
 
                 
                     [sBlock] = metro_sweep_faster_Combined_allGPU(sBlock,L,Lt,beta,occu,j1p,j1m,j2p,j2m,j3p,j3m,checkerboard,checkerboardOther,NEQ);
-                    for is = 1:1
-                        [sBlock] = wolff_sweep_notGPU(NCLUSTER0,sBlock,L,Lt,beta,occu,j1p,j1m,j2p,j2m,j3p,j3m);
-                    end
+%                     for is = 1:1
+%                         [sBlock] = wolff_sweep_notGPU(NCLUSTER0,sBlock,L,Lt,beta,occu,j1p,j1m,j2p,j2m,j3p,j3m);
+%                     end
 %                 eqT = eqT + toc;
 %                 tt1 = tt1+toc;
 %                 tic
@@ -663,11 +664,11 @@ jrs(:,:,:,:,6) = j3mr;
 % sbt = zeros(L+2,L+2,Lt+2,3,'single','gpuArray');
 
 neqStepSize = 25;
-nSpinsTest = getRSphere_WholeArray_N(L,Lt,2*neqStepSize);
-nSpinsTest = permute(nSpinsTest,[1 2 3 5 4]);
-nSpinsTest = bsxfun(@times,occu,nSpinsTest);
-
-rands = rand(L,L,Lt,2*neqStepSize,'single','gpuArray');
+% nSpinsTest = getRSphere_WholeArray_N(L,Lt,2*neqStepSize);
+% nSpinsTest = permute(nSpinsTest,[1 2 3 5 4]);
+% nSpinsTest = bsxfun(@times,occu,nSpinsTest);
+% 
+% rands = samRand(L,L,Lt,2*neqStepSize);
 
 j = 1;
 for i = 1:NEQ
@@ -676,7 +677,7 @@ for i = 1:NEQ
         nSpinsTest = permute(nSpinsTest,[1 2 3 5 4]);
         nSpinsTest = bsxfun(@times,occu,nSpinsTest);
         
-        rands = rand(L,L,Lt,2*NEQ,'single','gpuArray');
+        rands = samRand(L,L,Lt,2*NEQ);
         j = 1;
     end
     %nSpins = getRSphere_WholeArray(L,Lt);
@@ -687,7 +688,7 @@ for i = 1:NEQ
     %[s1p,s1m,s2p,s2m,s3p,s3m] = updateNeighborSpins(sBlock,L,Lt);
 
 %     ss(:,:,:,:,1) = sBlock(p1,:,:,:);ss(:,:,:,:,2) = sBlock(:,p1,:,:);ss(:,:,:,:,3) = sBlock(:,:,p1,:);ss(:,:,:,:,4) = sBlock(m1,:,:,:);ss(:,:,:,:,5) = sBlock(:,m1,:,:);ss(:,:,:,:,6) = sBlock(:,:,m1,:);nxyzT = sum(ss.*jrs,5);
-    sbt(2:1+L,2:1+L,2:1+Lt,:) = sBlock;
+%     sbt(2:1+L,2:1+L,2:1+Lt,:) = sBlock;
     
     s1p = sBlock(p1,:,:,:);s1m = sBlock(m1,:,:,:);s2p = sBlock(:,p1,:,:);s2m = sBlock(:,m1,:,:);s3p = sBlock(:,:,tp1,:);s3m = sBlock(:,:,tm1,:);
 %     netxyz = j1pr.*s1p + j2pr.*s2p + j3pr.*s3p + j1mr.*s1m + j2mr.*s2m + j3mr.*s3m;
@@ -704,8 +705,6 @@ for i = 1:NEQ
     j=j+1;
     notswap = ~swap;
     sBlock = bsxfun(@times,swap,nSpins) + bsxfun(@times,notswap,sBlock);
-    
-    
     
     %%%%%%%%%%%%%% Other checkerboard
     %nSpins = getRSphere_WholeArray(L,Lt);
@@ -830,7 +829,7 @@ for i = 1:NEQ-1
         nSpinsTest = permute(nSpinsTest,[1 2 3 5 4]);
         nSpinsTest = bsxfun(@times,occu,nSpinsTest);
         
-        rands = rand(L,L,Lt,2*NEQ,'single','gpuArray');
+        rands = samRand(L,L,Lt,2*NEQ);
         j = 1;
     end
     
@@ -914,14 +913,14 @@ function jval = jvalue(Flat_Dist,Tail_Heavy_Dist,MIN,MAX,y_exponent)
 
 if Flat_Dist
     if MAX~=MIN
-        jval = (rand*(MAX-MIN) + MIN);
+        jval = (samRand*(MAX-MIN) + MIN);
     else
         jval = MAX;
     end
 end
 
 if Tail_Heavy_Dist
-    jvalue = (rand^y_exponent);
+    jvalue = (samRand^y_exponent);
 end
 
 
@@ -935,7 +934,7 @@ function firstPass = getRSphere(i)
 
 startwith = ceil(i/.52) + 150;
 
-firstPass = rand(startwith,3)-.5;
+firstPass = samRand(startwith,3)-.5;
 %thirdPass = rand(startwith,3);
 %secondPass = getRSphere2(i);
 %gpuPass = rand(startwith,3,'single','gpuArray');
@@ -968,7 +967,7 @@ end
 function firstPass = getRSphere_WholeArray(L,Lt)
 i = L^2*Lt;
 
-rs = rand(i,2,'single','gpuArray');
+rs = samRand(i,2);
 elev = asin(2*rs(:,1)-1);
 %elev = asin(rvals);
 az = 2*pi*rs(:,2);
@@ -997,7 +996,7 @@ end
 function firstPass = getRSphere_WholeArray_N(L,Lt,N)
 i = L^2*Lt*N;
 
-rs = rand(i,2,'single','gpuArray');
+rs = samRand(i,2);
 elev = asin(2*rs(:,1)-1);
 %elev = asin(rvals);
 az = 2*pi*rs(:,2);
@@ -1189,7 +1188,7 @@ end
 
 function occu = initializeSiteImpurities(L,Lt,impconc)
 occu = zeros(L,L,Lt,'logical');
-rs = rand(L);
+rs = samRand(L, L);
 
 rs = rs > impconc;
 for i = 1:L

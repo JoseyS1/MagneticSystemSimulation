@@ -1,4 +1,5 @@
 using Random, Statistics, Printf, BenchmarkTools
+include("samRandom.jl")
 
 # Define main function
 function Heiswolff()
@@ -6,17 +7,17 @@ function Heiswolff()
   Random.seed!(314)
 
   # Define constants
-  LMin = 10
-  LMax = 10
+  LMin = 5
+  LMax = 5
   Lsz = 1
 
-  LtMin = 15
-  LtMax = 20
-  Ltsz = 20
+  LtMin = 10
+  LtMax = 15
+  Ltsz = 10
 
-  NCONF = 20
-  NEQ = 250
-  NMESS = 200 # Monte Carlo sweeps
+  NCONF = 1
+  NEQ = 50
+  NMESS = 50 # Monte Carlo sweeps
   TMIN = 1f0
   TMAX = 2f0
   DT = -0.2f0 # Temperature control
@@ -67,8 +68,6 @@ function Heiswolff()
         # Initialize spins
         hs = getRSphere_WholeArray(L, Lt)
         sBlock = occu .* hs
-
-        occs = deepcopy(occu)
 
         # Loop over temperatures
         ncluster = NCLUSTER0
@@ -212,10 +211,10 @@ end
 
 function jvalue(Flat_Dist::Bool, Tail_Heavy_Dist::Bool, MIN::Float32, MAX::Float32, y_exponent::Float32)::Float32
   if Tail_Heavy_Dist
-    return rand(Float32)^y_exponent
+    return SamRandom.rand()^y_exponent
   elseif Flat_Dist
     if MAX != MIN
-      return rand(Float32) * (MAX-MIN) + MIN
+      return SamRandom.rand() * (MAX-MIN) + MIN
     else
       return MAX
     end
@@ -224,7 +223,7 @@ end
 
 function initializeSiteImpurities(L::Int, Lt::Int, impconc::Float32)::Array{Bool, 3}
   occu = zeros(Bool, L, L, Lt)
-  rs = rand(Float32, L, L)
+  rs = SamRandom.rand(L, L)
 
   rs_bool = rs .> impconc
   for i = 1:L
@@ -240,7 +239,7 @@ end
 function getRSphere_WholeArray(L::Int, Lt::Int)::Array{Float32, 4}
   i = L^2 * Lt
 
-  rs = 2f0 .* rand(Float32, i, 2)
+  rs = 2f0 .* SamRandom.rand(i, 2)
   elev = asin.(rs[:, 1] .- 1f0)
   az = pi .* rs[:, 2]
 
@@ -260,7 +259,7 @@ end
 function getRSphere_WholeArray_N(L::Int, Lt::Int, N::Int)::Array{Float32, 5}
   i = L^2 * Lt * N
 
-  rs = 2f0 .* rand(Float32, i, 2)
+  rs = 2f0 .* SamRandom.rand(i, 2)
   elev = asin.(rs[:, 1] .- 1f0)
   az = pi .* rs[:, 2]
 
@@ -309,7 +308,7 @@ function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, 
       nSpinsTest = permutedims(nSpinsTest, [1, 2, 3, 5, 4])
       nSpinsTest = occu .* nSpinsTest
 
-      rands = rand(Float32, L, L, Lt, 2*NEQ)
+      rands = SamRandom.rand(L, L, Lt, 2*NEQ)
       j = 1
     end
 
@@ -330,17 +329,27 @@ function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, 
     swap = ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboard
     j += 1
     notswap = .!swap
-    sBlock = swap .* nSpins .+ notswap .* sBlock
+    sBlock .= dropdims(swap .* nSpins .+ notswap .* sBlock, dims=5)
 
     # Other checkerboard
     nSpins = nSpinsTest[:, :, :, :, j]
+    
+    s1p = sBlock[p1, :, :, :]
+    s1m = sBlock[m1, :, :, :]
+    s2p = sBlock[:, p1, :, :]
+    s2m = sBlock[:, m1, :, :]
+    s3p = sBlock[:, :, tp1, :]
+    s3m = sBlock[:, :, tm1, :]
+
+    netxyz = sum(cat(s1p, s2p, s3p, s1m, s2m, s3m, dims=5) .* jrs, dims=5)
+
     ds = sBlock .- nSpins
     dE = sum(netxyz .* ds, dims=4)
 
     swap = ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboardOther
     j += 1
     notswap = .!swap
-    sBlock = swap .* nSpins .+ notswap .* sBlock
+    sBlock .= dropdims(swap .* nSpins .+ notswap .* sBlock, dims=5)
   end
 
   # Return
@@ -595,7 +604,7 @@ function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt:
       nSpinsTest = permutedims(nSpinsTest, [1, 2, 3, 5, 4])
       nSpinsTest = occu .* nSpinsTest
 
-      rands = rand(Float32, L, L, Lt, 2*NEQ)
+      rands = SamRandom.rand(L, L, Lt, 2*NEQ)
       j = 1
     end
 
@@ -631,7 +640,7 @@ function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt:
     swap = ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboard
     j += 1
     notswap = .!swap
-    sBlock = swap .* nSpins .+ notswap .* sBlock
+    sBlock .= dropdims(swap .* nSpins .+ notswap .* sBlock, dims=5)
 
     # Other checkerboard
     nSpins = nSpinsTest[:, :, :, :, j]
@@ -651,7 +660,8 @@ function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt:
     swap = ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboardOther
     j += 1
     notswap = .!swap
-    sBlock = swap .* nSpins .+ notswap .* sBlock
+    # No dropdims needed???
+    sBlock .= swap .* nSpins .+ notswap .* sBlock
 
     en   = en   + (en_inc   - en) / i
     en2  = en2  + (en2_inc  - en2) / i
