@@ -821,7 +821,6 @@ mag  = 0;
 mag2 = 0;
 mag4 = 0;
 
-
 for i = 1:NEQ-1
     
     if mod(i,neqStepSize)==1
@@ -869,6 +868,7 @@ for i = 1:NEQ-1
     j=j+1;
     notswap = ~swap;
     sBlock = bsxfun(@times,swap,nSpins) + bsxfun(@times,notswap,sBlock);   
+    
     %%%%%%%%%%%%%% Other checkerboard
     nSpins = nSpinsTest(:,:,:,:,j);
     ds = (sBlock - nSpins);
@@ -881,14 +881,11 @@ for i = 1:NEQ-1
     notswap = ~swap;
     sBlock = bsxfun(@times,swap,nSpins) + bsxfun(@times,notswap,sBlock);
     
-    
-    
     en   = en   + (en_inc   - en)/i;
     en2  = en2  + (en2_inc  - en2)/i;
     mag  = mag  + (mag_inc  - mag)/i;
     mag2 = mag2 + (mag2_inc - mag2)/i;
     mag4 = mag4 + (mag4_inc - mag4)/i;
-    
     
 end
 

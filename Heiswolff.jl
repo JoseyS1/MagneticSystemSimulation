@@ -653,21 +653,21 @@ function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt:
     s3p = sBlock[:, :, tp1, :]
     s3m = sBlock[:, :, tm1, :]
 
-    netxyz = j1pr.*s1p .+ j2pr.*s2p .+ j3pr.*s3p
+    netxyz = sum(cat(s1p, s2p, s3p, s1m, s2m, s3m, dims=5) .* jrs, dims=5)
 
     dE = sum(netxyz .* ds, dims=4)
 
     swap = ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboardOther
     j += 1
     notswap = .!swap
-    # No dropdims needed???
-    sBlock .= swap .* nSpins .+ notswap .* sBlock
+    sBlock .= dropdims(swap .* nSpins .+ notswap .* sBlock, dims=5)
 
-    en   = en   + (en_inc   - en) / i
-    en2  = en2  + (en2_inc  - en2) / i
-    mag  = mag  + (mag_inc  - mag) / i
-    mag2 = mag2 + (mag2_inc - mag2) / i
-    mag4 = mag4 + (mag4_inc - mag4) / i
+    en   += (en_inc   - en) / i
+    en2  += (en2_inc  - en2) / i
+    mag  += (mag_inc  - mag) / i
+    mag2 += (mag2_inc - mag2) / i
+    mag4 += (mag4_inc - mag4) / i
+
   end
 
   # Return
