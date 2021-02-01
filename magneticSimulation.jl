@@ -1,4 +1,4 @@
-module PhaseTransition
+module MagneticSimulation
 
 using Random, Statistics, Printf, BenchmarkTools
 
