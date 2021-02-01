@@ -6,14 +6,14 @@ clear
 rng(314,'simdTwister')
 
 
-LMin =10;
-LMax = 10;
+LMin =40;
+LMax = 40;
 Lsz = 1;
 
 
 
-LtMin = 20;
-LtMax = 25;
+LtMin =50;
+LtMax = 55;
 Ltsz = 10;
 
 NCONF  = 5;

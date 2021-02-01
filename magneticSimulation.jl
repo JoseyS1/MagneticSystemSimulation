@@ -1,6 +1,6 @@
 module MagneticSimulation
 
-using Random, Statistics, Printf
+using Random, Statistics, Printf, InteractiveUtils
 
 const IntRange{T} = StepRange{T, T} where T <: Integer
 const FloatRange{T, K} = StepRangeLen{T, K, K} where {T <: AbstractFloat, K <: AbstractFloat}
@@ -29,11 +29,11 @@ function test()
   Random.seed!(314)
 
   # Define constants
-  L_RANGE = 10:1:10
-  LT_RANGE = 20:10:25
+  L_RANGE = 30:1:30
+  LT_RANGE = 40:10:40
   T_RANGE = 2f0:-0.2f0:1f0
 
-  N_CONF = 5
+  N_CONF = 1
   N_EQ = 200
   N_MESS = 200
 
@@ -45,7 +45,7 @@ function test()
 end
 
 function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::FloatRange{T, K}, 
-    n_conf::S, n_eq::S, n_mess::S, imp_conc::T, j_dist::Function) where {S, T, K}
+    n_conf::S, n_eq::S, n_mess::S, imp_conc::T, j_dist::Function)::Nothing where {S, T, K}
 
   n_temp = length(t_range)
   conf = Configuration(
@@ -68,6 +68,8 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
       q_space = T(2.0 * pi / l)
       q_time = T(2.0 * pi / lt)
 
+      s_block = zeros(T, l, l, lt, 3);
+
       for k = 1:n_conf
         println("L = $l , Lt = $lt: Disorder configuration $k of $n_conf")
 
@@ -75,17 +77,14 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
 
         occupied = initSiteImpurities(l, lt, imp_conc)
 
-        hs = dropdims(getRSphere(T, l, lt, 1), dims=4)
-
-        s_block = occupied .* hs
+        getRSphere!(s_block)
+        write("broad_rsphere.bin", s_block)
+        s_block .*= occupied
 
         for (i_temp, temp) = enumerate(t_range)
           beta = T(1.0 / temp)
 
           metroSweep!(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_eq)
-          
-
-          # write("phase_post.bin", s_block)
 
           en, en2, mag, mag2, mag4 = measurement(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_mess)
 
@@ -107,8 +106,9 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
   binder = mean(1 .- cell[1, 1].mag4[:, 1:n_conf] ./ (3 .* cell[1, 1].mag2[:, 1:n_conf].^2), dims=2)
 
   println(collect(t_range))
-  println()
   println(binder)
+
+  nothing
 end
 
 function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array{Bool, 3}, 
@@ -122,82 +122,50 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
   tp1 = circshift(1:lt, -1)
   tm1 = circshift(1:lt, 1)
 
-  jrs = cat(
-    repeat(j_vals.p1, outer=(1, 1, 1, 3)),
-    repeat(j_vals.p2, outer=(1, 1, 1, 3)),
-    repeat(j_vals.p3, outer=(1, 1, 1, 3)),
-    repeat(j_vals.m1, outer=(1, 1, 1, 3)),
-    repeat(j_vals.m2, outer=(1, 1, 1, 3)),
-    repeat(j_vals.m3, outer=(1, 1, 1, 3)),
-    dims=5
-  )
-
-  # write("phase_sBlock_0_0.bin", s_block)
-
-  j = nothing
-  rands = zeros(T, l, l, lt, 2*step_size)
-  n_spins_test = zeros(T, l, l, lt, 3, 2*step_size)
+  rands = zeros(T, l, l, lt)
+  n_spins = zeros(T, l, l, lt, 3)
+  temp_spins = zeros(T, l, l, lt, 3)
   netxyz = zeros(T, l, l, lt, 3)
   dE = zeros(T, l, l, lt)
   swap = zeros(Bool, l, l, lt)
   for i = 1:n_eq
-    if mod(i, step_size) == 1
-      permutedims!(n_spins_test, getRSphere(T, l, lt, 2*step_size), [1, 2, 3, 5, 4])
-      n_spins_test .*= occupied
-
-      rands .= rand(T, l, l, lt, 2*step_size)
-      j = 1
-    end
-
     # Checkerboard
-    n_spins = @view n_spins_test[:, :, :, :, j]
+    getRSphere!(n_spins)
+    n_spins .*= occupied
+    rands .= rand(T, l, l, lt)
 
-    netxyz .= dropdims(
-      sum(
-        cat(
-          s_block[p1, :, :, :],
-          s_block[m1, :, :, :],
-          s_block[:, p1, :, :],
-          s_block[:, m1, :, :],
-          s_block[:, :, tp1, :],
-          s_block[:, :, tm1, :],
-          dims=5
-        ) .* jrs,
-        dims=5
-      ),
-      dims=5
-    )
+    netxyz .= s_block[p1, :, :, :] .* j_vals.p1 .+ 
+              s_block[m1, :, :, :] .* j_vals.m1 .+
+              s_block[:, p1, :, :] .* j_vals.p2 .+ 
+              s_block[:, m1, :, :] .* j_vals.m2 .+
+              s_block[:, :, tp1, :] .* j_vals.p3 .+ 
+              s_block[:, :, tm1, :] .* j_vals.m3
 
-    dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
-    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboard
+    temp_spins .= s_block .- n_spins
+    dE .= netxyz[:, :, :, 1] .* temp_spins[:, :, :, 1] .+
+          netxyz[:, :, :, 2] .* temp_spins[:, :, :, 2] .+
+          netxyz[:, :, :, 3] .* temp_spins[:, :, :, 3]
+    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands)) .& checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
-    # write("phase_sBlock_$(i)_$(j).bin", s_block)
-    j += 1
 
     # Inverse Checkerboard
-    n_spins = @view n_spins_test[:, :, :, :, j]
+    getRSphere!(n_spins)
+    n_spins .*= occupied
+    rands .= rand(T, l, l, lt)
 
-    netxyz .= dropdims(
-      sum(
-        cat(
-          s_block[p1, :, :, :],
-          s_block[m1, :, :, :],
-          s_block[:, p1, :, :],
-          s_block[:, m1, :, :],
-          s_block[:, :, tp1, :],
-          s_block[:, :, tm1, :],
-          dims=5
-        ) .* jrs,
-        dims=5
-      ),
-      dims=5
-    )
+    netxyz .= s_block[p1, :, :, :] .* j_vals.p1 .+ 
+              s_block[m1, :, :, :] .* j_vals.m1 .+
+              s_block[:, p1, :, :] .* j_vals.p2 .+ 
+              s_block[:, m1, :, :] .* j_vals.m2 .+
+              s_block[:, :, tp1, :] .* j_vals.p3 .+ 
+              s_block[:, :, tm1, :] .* j_vals.m3
 
-    dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
-    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& .!checkerboard
+    temp_spins .= s_block .- n_spins
+    dE .= netxyz[:, :, :, 1] .* temp_spins[:, :, :, 1] .+
+          netxyz[:, :, :, 2] .* temp_spins[:, :, :, 2] .+
+          netxyz[:, :, :, 3] .* temp_spins[:, :, :, 3]
+    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands)) .& .!checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
-    # write("phase_sBlock_$(i)_$(j).bin", s_block)
-    j += 1
   end
 end
 
@@ -212,53 +180,31 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
   tp1 = circshift(1:lt, -1)
   tm1 = circshift(1:lt, 1)
 
-  jrs = cat(
-    repeat(j_vals.p1, outer=(1, 1, 1, 3)),
-    repeat(j_vals.p2, outer=(1, 1, 1, 3)),
-    repeat(j_vals.p3, outer=(1, 1, 1, 3)),
-    repeat(j_vals.m1, outer=(1, 1, 1, 3)),
-    repeat(j_vals.m2, outer=(1, 1, 1, 3)),
-    repeat(j_vals.m3, outer=(1, 1, 1, 3)),
-    dims=5
-  )
-
   en = T(0)
   en2 = T(0)
   mag = T(0)
   mag2 = T(0)
   mag4 = T(0)
 
-  # write("phase_sBlock_0_0.bin", s_block)
-
-  j = nothing
-  rands = zeros(T, l, l, lt, 2*step_size)
-  n_spins_test = zeros(T, l, l, lt, 3, 2*step_size)
+  rands = zeros(T, l, l, lt)
+  n_spins = zeros(T, l, l, lt, 3)
+  temp_spins = zeros(T, l, l, lt, 3)
   netxyz = zeros(T, l, l, lt, 3)
   dE = zeros(T, l, l, lt)
   swap = zeros(Bool, l, l, lt)
   for i = 1:n_mess-1
-    if mod(i, step_size) == 1
-      permutedims!(n_spins_test, getRSphere(T, l, lt, 2*step_size), [1, 2, 3, 5, 4])
-      n_spins_test .*= occupied
-
-      rands .= rand(T, l, l, lt, 2*step_size)
-      j = 1
-    end
-
+    # Measurement
     netxyz .= j_vals.p1 .* s_block[p1, :, :, :] .+ j_vals.p2 .* s_block[:, p1, :, :] .+ j_vals.p3 .* s_block[:, :, tp1, :]
 
-    sweepen = reduce(+, netxyz .* s_block)
-
-    en_inc = sweepen / T(l*l*lt)
+    temp_spins .= netxyz .* s_block
+    en_inc = sum(temp_spins) / T(l*l*lt)
     en2_inc = en_inc^2
 
-    m_xyz = [
-      reduce(+, s_block[:, :, :, 1]),
-      reduce(+, s_block[:, :, :, 2]),
-      reduce(+, s_block[:, :, :, 3])
-    ]
-
-    mag_inc = sqrt(sum(m_xyz.^2)) / T(l*l*lt)
+    mag_inc = sqrt(
+      sum(@view s_block[:, :, :, 1])^2 + 
+      sum(@view s_block[:, :, :, 2])^2 + 
+      sum(@view s_block[:, :, :, 3])^2
+    ) / T(l*l*lt)
     mag2_inc = mag_inc^2
     mag4_inc = mag_inc^4
 
@@ -270,54 +216,42 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
 
     # Metro Sweep
     # Checkerboard
-    n_spins = @view n_spins_test[:, :, :, :, j]
+    getRSphere!(n_spins)
+    n_spins .*= occupied
+    rands .= rand(T, l, l, lt)
 
-    netxyz .= dropdims(
-      sum(
-        cat(
-          s_block[p1, :, :, :],
-          s_block[m1, :, :, :],
-          s_block[:, p1, :, :],
-          s_block[:, m1, :, :],
-          s_block[:, :, tp1, :],
-          s_block[:, :, tm1, :],
-          dims=5
-        ) .* jrs,
-        dims=5
-      ),
-      dims=5
-    )
+    netxyz .= s_block[p1, :, :, :] .* j_vals.p1 .+ 
+              s_block[m1, :, :, :] .* j_vals.m1 .+
+              s_block[:, p1, :, :] .* j_vals.p2 .+ 
+              s_block[:, m1, :, :] .* j_vals.m2 .+
+              s_block[:, :, tp1, :] .* j_vals.p3 .+ 
+              s_block[:, :, tm1, :] .* j_vals.m3
 
-    dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
-    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboard
+    temp_spins .= s_block .- n_spins
+    dE .= netxyz[:, :, :, 1] .* temp_spins[:, :, :, 1] .+
+          netxyz[:, :, :, 2] .* temp_spins[:, :, :, 2] .+
+          netxyz[:, :, :, 3] .* temp_spins[:, :, :, 3]
+    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands)) .& checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
-    # write("phase_sBlock_$(i)_$(j).bin", s_block)
-    j += 1
 
     # Inverse Checkerboard
-    n_spins = @view n_spins_test[:, :, :, :, j]
+    getRSphere!(n_spins)
+    n_spins .*= occupied
+    rands .= rand(T, l, l, lt)
 
-    netxyz .= dropdims(
-      sum(
-        cat(
-          s_block[p1, :, :, :],
-          s_block[m1, :, :, :],
-          s_block[:, p1, :, :],
-          s_block[:, m1, :, :],
-          s_block[:, :, tp1, :],
-          s_block[:, :, tm1, :],
-          dims=5
-        ) .* jrs,
-        dims=5
-      ),
-      dims=5
-    )
+    netxyz .= s_block[p1, :, :, :] .* j_vals.p1 .+ 
+              s_block[m1, :, :, :] .* j_vals.m1 .+
+              s_block[:, p1, :, :] .* j_vals.p2 .+ 
+              s_block[:, m1, :, :] .* j_vals.m2 .+
+              s_block[:, :, tp1, :] .* j_vals.p3 .+ 
+              s_block[:, :, tm1, :] .* j_vals.m3
 
-    dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
-    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& .!checkerboard
+    temp_spins .= s_block .- n_spins
+    dE .= netxyz[:, :, :, 1] .* temp_spins[:, :, :, 1] .+
+          netxyz[:, :, :, 2] .* temp_spins[:, :, :, 2] .+
+          netxyz[:, :, :, 3] .* temp_spins[:, :, :, 3]
+    swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands)) .& .!checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
-    # write("phase_sBlock_$(i)_$(j).bin", s_block)
-    j += 1
   end
 
   (en, en2, mag, mag2, mag4)
@@ -370,23 +304,23 @@ function initSiteImpurities(l::T, lt::T, imp_conc::S)::Array{Bool, 3} where {T <
   occu
 end
 
-function getRSphere(S::DataType, l::T, lt::T, n::T)::Array{S, 5} where {T <: Integer}
-  i = l * l * lt * n
+function getRSphere!(r_sphere::Array{T, 4})::Nothing where T <: AbstractFloat
+  # TODO: Allow passing in of buffer to do this broadcasted...
+  for k = 1:size(r_sphere, 3)
+    for j = 1:size(r_sphere, 2)
+      for i = 1:size(r_sphere, 1)
+        elev = T(asin(2 * rand(T) - 1))
+        az = T(2 * pi * rand(T))
+        rcos_elev = cos(elev)
+        
+        @inbounds r_sphere[i, j, k, 1] = rcos_elev * cos(az)
+        @inbounds r_sphere[i, j, k, 2] = rcos_elev * sin(az)
+        @inbounds r_sphere[i, j, k, 3] = sin(elev)
+      end
+    end
+  end
 
-  rs = 2.0 .* rand(S, i, 2)
-  elev = asin.(rs[:, 1] .- 1.0)
-  az = pi .* rs[:, 2]
-
-  rcos_elev = cos.(elev)
-
-  firstPass = cat(
-    rcos_elev .* cos.(az), 
-    rcos_elev .* sin.(az),
-    sin.(elev),
-    dims=2
-  )
-
-  reshape(firstPass, l, l, lt, n, 3)
+  nothing
 end
 
 function tailHeavyDist(y::T)::T where T <: AbstractFloat
