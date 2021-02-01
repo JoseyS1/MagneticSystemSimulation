@@ -3,23 +3,22 @@ function matHeiswolff1_GPU_Functions_Bloced()
 tic
 %#ok<*NASGU>
 clear
-clear samRand
 rng(314,'simdTwister')
 
 
-LMin =5;
-LMax = 5;
+LMin =10;
+LMax = 10;
 Lsz = 1;
 
 
 
-LtMin = 10;
-LtMax = 15;
+LtMin = 20;
+LtMax = 25;
 Ltsz = 10;
 
-NCONF  = 1;
-NEQ    = 50;
-NMESS  = 50;     % Monte Carlo sweeps
+NCONF  = 5;
+NEQ    = 200;
+NMESS  = 200;     % Monte Carlo sweeps
 TMIN   = 1.0;
 TMAX   = 2.0;
 DT     = -0.2;      % temperature control
@@ -677,7 +676,7 @@ for i = 1:NEQ
         nSpinsTest = permute(nSpinsTest,[1 2 3 5 4]);
         nSpinsTest = bsxfun(@times,occu,nSpinsTest);
         
-        rands = samRand(L,L,Lt,2*NEQ);
+        rands = rand(L,L,Lt,2*NEQ, 'single', 'gpuArray');
         j = 1;
     end
     %nSpins = getRSphere_WholeArray(L,Lt);
@@ -828,7 +827,7 @@ for i = 1:NEQ-1
         nSpinsTest = permute(nSpinsTest,[1 2 3 5 4]);
         nSpinsTest = bsxfun(@times,occu,nSpinsTest);
         
-        rands = samRand(L,L,Lt,2*NEQ);
+        rands = rand(L,L,Lt,2*NEQ, 'single', 'gpuArray');
         j = 1;
     end
     
@@ -910,14 +909,14 @@ function jval = jvalue(Flat_Dist,Tail_Heavy_Dist,MIN,MAX,y_exponent)
 
 if Flat_Dist
     if MAX~=MIN
-        jval = (samRand*(MAX-MIN) + MIN);
+        jval = (rand*(MAX-MIN) + MIN);
     else
         jval = MAX;
     end
 end
 
 if Tail_Heavy_Dist
-    jvalue = (samRand^y_exponent);
+    jvalue = (rand^y_exponent);
 end
 
 
@@ -931,7 +930,7 @@ function firstPass = getRSphere(i)
 
 startwith = ceil(i/.52) + 150;
 
-firstPass = samRand(startwith,3)-.5;
+firstPass = rand(startwith,3)-.5;
 %thirdPass = rand(startwith,3);
 %secondPass = getRSphere2(i);
 %gpuPass = rand(startwith,3,'single','gpuArray');
@@ -964,7 +963,7 @@ end
 function firstPass = getRSphere_WholeArray(L,Lt)
 i = L^2*Lt;
 
-rs = samRand(i,2);
+rs = rand(i,2, 'single', 'gpuArray');
 elev = asin(2*rs(:,1)-1);
 %elev = asin(rvals);
 az = 2*pi*rs(:,2);
@@ -993,7 +992,7 @@ end
 function firstPass = getRSphere_WholeArray_N(L,Lt,N)
 i = L^2*Lt*N;
 
-rs = samRand(i,2);
+rs = rand(i,2, 'single', 'gpuArray');
 elev = asin(2*rs(:,1)-1);
 %elev = asin(rvals);
 az = 2*pi*rs(:,2);

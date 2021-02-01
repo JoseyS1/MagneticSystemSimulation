@@ -1,6 +1,6 @@
 module MagneticSimulation
 
-using Random, Statistics, Printf, BenchmarkTools
+using Random, Statistics, Printf
 
 const IntRange{T} = StepRange{T, T} where T <: Integer
 const FloatRange{T, K} = StepRangeLen{T, K, K} where {T <: AbstractFloat, K <: AbstractFloat}
@@ -33,9 +33,9 @@ function test()
   LT_RANGE = 20:10:25
   T_RANGE = 2f0:-0.2f0:1f0
 
-  N_CONF = 1
-  N_EQ = 100
-  N_MESS = 100
+  N_CONF = 5
+  N_EQ = 200
+  N_MESS = 200
 
   IMP_CONC = 0f0
 
