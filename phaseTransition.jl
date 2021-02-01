@@ -26,13 +26,15 @@ struct Configuration{T}
 end
 
 function test()
+  Random.seed!(314)
+
   # Define constants
-  L_RANGE = 5:1:5
-  LT_RANGE = 10:10:15
+  L_RANGE = 10:1:10
+  LT_RANGE = 20:10:25
   T_RANGE = 2f0:-0.2f0:1f0
 
   N_CONF = 1
-  N_EQ = 50
+  N_EQ = 100
   N_MESS = 100
 
   IMP_CONC = 0f0
@@ -81,6 +83,9 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
           beta = T(1.0 / temp)
 
           metroSweep!(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_eq)
+          
+
+          # write("phase_post.bin", s_block)
 
           en, en2, mag, mag2, mag4 = measurement(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_mess)
 
@@ -127,6 +132,8 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     dims=5
   )
 
+  # write("phase_sBlock_0_0.bin", s_block)
+
   j = nothing
   rands = zeros(T, l, l, lt, 2*step_size)
   n_spins_test = zeros(T, l, l, lt, 3, 2*step_size)
@@ -164,6 +171,7 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
     swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
+    # write("phase_sBlock_$(i)_$(j).bin", s_block)
     j += 1
 
     # Inverse Checkerboard
@@ -188,6 +196,7 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
     swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& .!checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
+    # write("phase_sBlock_$(i)_$(j).bin", s_block)
     j += 1
   end
 end
@@ -219,13 +228,15 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
   mag2 = T(0)
   mag4 = T(0)
 
+  # write("phase_sBlock_0_0.bin", s_block)
+
   j = nothing
   rands = zeros(T, l, l, lt, 2*step_size)
   n_spins_test = zeros(T, l, l, lt, 3, 2*step_size)
   netxyz = zeros(T, l, l, lt, 3)
   dE = zeros(T, l, l, lt)
   swap = zeros(Bool, l, l, lt)
-  for i = 1:n_mess
+  for i = 1:n_mess-1
     if mod(i, step_size) == 1
       permutedims!(n_spins_test, getRSphere(T, l, lt, 2*step_size), [1, 2, 3, 5, 4])
       n_spins_test .*= occupied
@@ -280,6 +291,7 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
     swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
+    # write("phase_sBlock_$(i)_$(j).bin", s_block)
     j += 1
 
     # Inverse Checkerboard
@@ -304,6 +316,7 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     dE .= dropdims(sum(netxyz .* (s_block .- n_spins), dims=4), dims=4)
     swap .= ((dE .< 0f0) .| (exp.(-dE.*beta) .> rands[:, :, :, j])) .& .!checkerboard
     s_block .= swap .* n_spins .+ .!swap .* s_block
+    # write("phase_sBlock_$(i)_$(j).bin", s_block)
     j += 1
   end
 
@@ -332,7 +345,7 @@ function initSiteCouplings(l::T, lt::T, S::DataType, j_dist::Function)::JValues{
     for j = 1:l
       j_vals.p1[i, j, :] .= j_dist()
       j_vals.p2[i, j, :] .= j_dist()
-      # j.p3[i, j, :] .= dist()
+      j_vals.p3[i, j, :] .= j_dist()
     end
   end
 
@@ -381,6 +394,6 @@ function tailHeavyDist(y::T)::T where T <: AbstractFloat
 end
 
 function flatDist(min_value::T, max_value::T)::T where T <: AbstractFloat
-  rand(T) * (max_value-min_value) + min_value
+  max_value != min_value ? rand(T) * (max_value-min_value) + min_value : max_value
 end
 end
