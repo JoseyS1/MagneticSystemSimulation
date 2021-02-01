@@ -78,7 +78,6 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
         occupied = initSiteImpurities(l, lt, imp_conc)
 
         getRSphere!(s_block)
-        write("broad_rsphere.bin", s_block)
         s_block .*= occupied
 
         for (i_temp, temp) = enumerate(t_range)
