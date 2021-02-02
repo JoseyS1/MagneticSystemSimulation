@@ -68,7 +68,8 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
       q_space = T(2.0 * pi / l)
       q_time = T(2.0 * pi / lt)
 
-      s_block = zeros(T, l, l, lt, 3);
+      s_block = zeros(T, l, l, lt, 3)
+      sphere_buffer = zeros(T, l, l, lt, 3)
 
       for k = 1:n_conf
         println("L = $l , Lt = $lt: Disorder configuration $k of $n_conf")
@@ -77,15 +78,15 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
 
         occupied = initSiteImpurities(l, lt, imp_conc)
 
-        getRSphere!(s_block)
+        getRSphere!(s_block, sphere_buffer)
         s_block .*= occupied
 
         for (i_temp, temp) = enumerate(t_range)
           beta = T(1.0 / temp)
 
-          metroSweep!(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_eq)
+          metroSweep!(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_eq, sphere_buffer)
 
-          en, en2, mag, mag2, mag4 = measurement(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_mess)
+          en, en2, mag, mag2, mag4 = measurement(s_block, l, lt, beta, occupied, j_vals, checkerboard, n_mess, sphere_buffer)
 
           conf.en[i_temp, k] = en
           conf.en2[i_temp, k] = en2
@@ -111,7 +112,7 @@ function runSimulation(l_range::IntRange{S}, lt_range::IntRange{S}, t_range::Flo
 end
 
 function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array{Bool, 3}, 
-    j_vals::JValues{T}, checkerboard::Array{Bool, 3}, n_eq::S)::Nothing where {T <: AbstractFloat, S <: Integer}
+    j_vals::JValues{T}, checkerboard::Array{Bool, 3}, n_eq::S, sphere_buffer::Array{T, 4})::Nothing where {T <: AbstractFloat, S <: Integer}
 
   step_size = 25
 
@@ -129,7 +130,7 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
   swap = zeros(Bool, l, l, lt)
   for i = 1:n_eq
     # Checkerboard
-    getRSphere!(n_spins)
+    getRSphere!(n_spins, sphere_buffer)
     n_spins .*= occupied
     rands .= rand(T, l, l, lt)
 
@@ -148,7 +149,7 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     s_block .= swap .* n_spins .+ .!swap .* s_block
 
     # Inverse Checkerboard
-    getRSphere!(n_spins)
+    getRSphere!(n_spins, sphere_buffer)
     n_spins .*= occupied
     rands .= rand(T, l, l, lt)
 
@@ -169,7 +170,7 @@ function metroSweep!(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
 end
 
 function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array{Bool, 3}, 
-    j_vals::JValues{T}, checkerboard::Array{Bool, 3}, n_mess::S)::Tuple{T, T, T, T, T} where {T <: AbstractFloat, S <: Integer}
+    j_vals::JValues{T}, checkerboard::Array{Bool, 3}, n_mess::S, sphere_buffer::Array{T, 4})::Tuple{T, T, T, T, T} where {T <: AbstractFloat, S <: Integer}
 
   step_size = 25
 
@@ -215,7 +216,7 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
 
     # Metro Sweep
     # Checkerboard
-    getRSphere!(n_spins)
+    getRSphere!(n_spins, sphere_buffer)
     n_spins .*= occupied
     rands .= rand(T, l, l, lt)
 
@@ -234,7 +235,7 @@ function measurement(s_block::Array{T, 4}, l::S, lt::S, beta::T, occupied::Array
     s_block .= swap .* n_spins .+ .!swap .* s_block
 
     # Inverse Checkerboard
-    getRSphere!(n_spins)
+    getRSphere!(n_spins, sphere_buffer)
     n_spins .*= occupied
     rands .= rand(T, l, l, lt)
 
@@ -303,21 +304,14 @@ function initSiteImpurities(l::T, lt::T, imp_conc::S)::Array{Bool, 3} where {T <
   occu
 end
 
-function getRSphere!(r_sphere::Array{T, 4})::Nothing where T <: AbstractFloat
-  # TODO: Allow passing in of buffer to do this broadcasted...
-  for k = 1:size(r_sphere, 3)
-    for j = 1:size(r_sphere, 2)
-      for i = 1:size(r_sphere, 1)
-        elev = T(asin(2 * rand(T) - 1))
-        az = T(2 * pi * rand(T))
-        rcos_elev = cos(elev)
-        
-        @inbounds r_sphere[i, j, k, 1] = rcos_elev * cos(az)
-        @inbounds r_sphere[i, j, k, 2] = rcos_elev * sin(az)
-        @inbounds r_sphere[i, j, k, 3] = sin(elev)
-      end
-    end
-  end
+function getRSphere!(r_sphere::Array{T, 4}, buffer::Array{T, 4})::Nothing where T <: AbstractFloat
+  buffer[:, :, :, 1] .= T.(asin.(2 .* rand(T, size(r_sphere)[1:end-1]...) .- 1))
+  buffer[:, :, :, 2] .= T.(2 .* pi .* rand(T, size(r_sphere)[1:end-1]...))
+  buffer[:, :, :, 3] .= cos.(@view buffer[:, :, :, 1])
+
+  @inbounds r_sphere[:, :, :, 1] .= buffer[:, :, :, 3] .* cos.(@view buffer[:, :, :, 2])
+  @inbounds r_sphere[:, :, :, 2] .= buffer[:, :, :, 3] .* sin.(@view buffer[:, :, :, 2])
+  @inbounds r_sphere[:, :, :, 3] .= sin.(@view buffer[:, :, :, 1])
 
   nothing
 end
