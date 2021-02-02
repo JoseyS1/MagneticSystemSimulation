@@ -1,4 +1,4 @@
-using Random, Statistics, Printf, BenchmarkTools
+using Random, Statistics, Printf, BenchmarkTools, Plots
 include("samRandom.jl")
 
 # Define main function
@@ -7,20 +7,20 @@ function Heiswolff()
   Random.seed!(314)
 
   # Define constants
-  LMin = 5
-  LMax = 5
+  LMin = 25
+  LMax = 25
   Lsz = 1
 
-  LtMin = 10
-  LtMax = 15
+  LtMin = 40
+  LtMax = 40
   Ltsz = 10
 
-  NCONF = 1
-  NEQ = 50
-  NMESS = 50 # Monte Carlo sweeps
+  NCONF = 5
+  NEQ = 200
+  NMESS = 200 # Monte Carlo sweeps
   TMIN = 1f0
   TMAX = 2f0
-  DT = -0.2f0 # Temperature control
+  DT = -0.05f0 # Temperature control
   NTEMP = Int(ceil(1+(TMIN-TMAX) / DT))
 
   impconc = 0f0 # 0.407253 # Impurities as decimal
@@ -163,6 +163,21 @@ function Heiswolff()
   binder = mean(1f0 .- cell[LMin, LtMin].mag4[:,1:NCONF] ./ (3f0.*cell[LMin, LtMin].mag2[:,1:NCONF].^2), dims=2);
   # err = std(1f0 .- cell[LMIN, LTMIN].mag4[:,1:NCONF] ./ (3f0.*cell[LMIN, LTMIN].mag2[:,1:NCONF].^2),0,2) ./ sqrt(NCONF);
 
+
+  minB = 4 * ones(Float32, size(temp, 1)) / 9
+  maxB = 2 * ones(Float32, size(temp, 1)) / 3
+
+  display(plot(temp, binder))
+  display(plot!(temp, minB))
+  display(plot!(temp, maxB))
+  display(plot!([3 / 2, 3 / 2], LinRange(4 / 9, 2 / 3, 2)))
+
+
+
+
+
+
+
   println(temp)
   println()
   println(binder)
@@ -186,8 +201,8 @@ function generateCheckerboard(L::Int, Lt::Int)::Array{Bool, 3}
   checkerboard
 end
 
-function initializeSiteCouplings_Block(L::Int, Lt::Int, Flat_Dist::Bool, Tail_Heavy_Dist::Bool, 
-    MIN::Float32, MAX::Float32, 
+function initializeSiteCouplings_Block(L::Int, Lt::Int, Flat_Dist::Bool, Tail_Heavy_Dist::Bool,
+    MIN::Float32, MAX::Float32,
     y_exponent::Float32)::Tuple{Array{Float32, 3}, Array{Float32, 3}, Array{Float32, 3}, Array{Float32, 3}, Array{Float32, 3}, Array{Float32, 3}}
   j1p = zeros(Float32, L, L, Lt)
   j2p = zeros(Float32, L, L, Lt)
@@ -246,7 +261,7 @@ function getRSphere_WholeArray(L::Int, Lt::Int)::Array{Float32, 4}
   rcoselev = cos.(elev)
 
   firstPass = cat(
-    rcoselev .* cos.(az), 
+    rcoselev .* cos.(az),
     rcoselev .* sin.(az),
     sin.(elev),
     dims=2
@@ -266,7 +281,7 @@ function getRSphere_WholeArray_N(L::Int, Lt::Int, N::Int)::Array{Float32, 5}
   rcoselev = cos.(elev)
 
   firstPass = cat(
-    rcoselev .* cos.(az), 
+    rcoselev .* cos.(az),
     rcoselev .* sin.(az),
     sin.(elev),
     dims=2
@@ -276,9 +291,9 @@ function getRSphere_WholeArray_N(L::Int, Lt::Int, N::Int)::Array{Float32, 5}
   reshape(firstPass, L, L, Lt, N, 3)
 end
 
-function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int, 
-  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3}, 
-  j2p::Array{Float32, 3}, j2m::Array{Float32, 3}, j3p::Array{Float32, 3}, j3m::Array{Float32, 3}, 
+function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
+  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3},
+  j2p::Array{Float32, 3}, j2m::Array{Float32, 3}, j3p::Array{Float32, 3}, j3m::Array{Float32, 3},
   checkerboard::Array{Bool, 3}, checkerboardOther::Array{Bool, 3}, NEQ::Int)::Nothing
 
   p1 = circshift(1:L, -1)
@@ -333,7 +348,7 @@ function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, 
 
     # Other checkerboard
     nSpins = nSpinsTest[:, :, :, :, j]
-    
+
     s1p = sBlock[p1, :, :, :]
     s1m = sBlock[m1, :, :, :]
     s2p = sBlock[:, p1, :, :]
@@ -356,8 +371,8 @@ function metro_sweep_faster_Combined_allGPU!(sBlock::Array{Float32, 4}, L::Int, 
   nothing
 end
 
-function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int, 
-  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3}, 
+function wolff_sweep_notGPU!(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
+  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3},
   j2p::Array{Float32, 3}, j2m::Array{Float32, 3}, j3p::Array{Float32, 3}, j3m::Array{Float32, 3}, NCLUSTER::Int)::Nothing
 
   o1p, o1m, o2p, o2m, o3p, o3m = updateNeighborSpins(occu)
@@ -566,9 +581,9 @@ function updateNeighborSpins(s::Array{Bool, 3})::Tuple{Array{Bool, 3}, Array{Boo
   )
 end
 
-function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt::Int, 
-  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3}, 
-  j2p::Array{Float32, 3}, j2m::Array{Float32, 3}, j3p::Array{Float32, 3}, j3m::Array{Float32, 3}, 
+function measurement_faster_combinedMetro(sBlock::Array{Float32, 4}, L::Int, Lt::Int,
+  beta::Float32, occu::Array{Bool, 3}, j1p::Array{Float32, 3}, j1m::Array{Float32, 3},
+  j2p::Array{Float32, 3}, j2m::Array{Float32, 3}, j3p::Array{Float32, 3}, j3m::Array{Float32, 3},
   checkerboard::Array{Bool, 3}, checkerboardOther::Array{Bool, 3}, NEQ::Int)::Tuple{Float32, Float32, Float32, Float32, Float32}
 
   p1 = circshift(1:L, -1)
@@ -700,27 +715,27 @@ struct Conf
   xiscon::Array{Float32, 2}
 end
 Conf(N::Int, M::Int) = Conf(
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
-  zeros(Float32, N, M), 
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
+  zeros(Float32, N, M),
   zeros(Float32, N, M)
 )
 
